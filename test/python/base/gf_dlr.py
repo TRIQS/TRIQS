@@ -19,17 +19,14 @@
 import unittest
 
 import numpy as np
+from triqs.gf import Gf, make_gf_dlr, make_gf_dlr_imtime, make_gf_dlr_imfreq, iOmega_n, inverse, density, BlockGf, fit_gf_dlr
+from triqs.gf.meshes import MeshDLR, MeshDLRImFreq, MeshDLRImTime, MeshImFreq, MeshImTime
+from triqs.utility.comparison_tests import assert_gfs_are_close, assert_block_gfs_are_close
 
-from triqs.gf import *
-from triqs.gf.meshes import MeshDLRImTime
-from triqs.gf.meshes import MeshDLRImFreq
-from triqs.gf.meshes import MeshDLR
-
-from triqs.utility.comparison_tests import *
 
 def onefermion(tau, omega, beta):
     from math import exp
-    return -exp(-omega * tau) / (1 + exp(-beta * omega));
+    return -exp(-omega * tau) / (1 + exp(-beta * omega))
 
 class test_dlr_mesh(unittest.TestCase):
 
@@ -179,7 +176,7 @@ class test_dlr_mesh(unittest.TestCase):
         assert_gfs_are_close(gt, gt2)
 
     def test_dlr_bug_segfault(self):
-        dlr_iw_mesh = MeshDLRImFreq(beta=5.0, statistic='Fermion', w_max=1.0, eps=1e-15)
+        dlr_iw_mesh = MeshDLRImFreq(beta=5.0, statistic='Fermion', w_max=1.0, eps=1e-14)
 
     def test_dlr_basic_op(self):
         beta, eps, w_max = 46.2, 1e-12, 10.
@@ -205,7 +202,7 @@ class test_dlr_mesh(unittest.TestCase):
     def test_dlr_symmetrized(self):
 
         beta = 20
-        tau_mesh = MeshDLRImTime(beta = beta, statistic = 'Boson', w_max = 2.0, eps = 1e-15, symmetrize = True)
+        tau_mesh = MeshDLRImTime(beta = beta, statistic = 'Boson', w_max = 2.0, eps = 1e-14, symmetrize = True)
 
         tau_values = np.fromiter(tau_mesh.values(), dtype=float)
         assert(np.allclose(tau_values, beta - tau_values[::-1]))
@@ -223,8 +220,36 @@ class test_dlr_mesh(unittest.TestCase):
 
         assert_gfs_are_close(make_gf_dlr_imtime(make_gf_dlr(giw)), gtau)
 
+    def test_dlr_l2_norm(self):
+
+        beta, eps, w_max = 40.1, 1e-10, 5.
+        pole = 0.375
+        mesh_dlr_iw = MeshDLRImFreq(beta, 'Fermion', w_max, eps)
+
+        g_dlr_iw = Gf(mesh=mesh_dlr_iw, target_shape=[1,1])
+        g_dlr_iw << inverse(iOmega_n - pole)
+        g_dlr = make_gf_dlr(g_dlr_iw)
+        g_dlr_tau = make_gf_dlr_imtime(g_dlr)
+
+        # create simply one fermion Gf for one pole in tau
+        mesh_values = np.linspace(0, beta, 10001)
+        G_analytic =-np.exp(-mesh_values[:, None] * pole + beta * (pole < 0.0) * pole) / (1. + np.exp(-beta * np.abs(pole)))
+        # calc G^2 = 1/beta \int_0^\beta d\tau G(\tau)^2
+        Gsq = np.trapz(G_analytic[:,0]*G_analytic[:,0],x=mesh_values)/beta
+        ref = np.sqrt(Gsq)
+
+        # test all dlr mesh version
+        assert( np.allclose(g_dlr.tau_L2_norm(), ref) )
+        assert( np.allclose(g_dlr_iw.tau_L2_norm(), ref) )
+        assert( np.allclose(g_dlr_tau.tau_L2_norm(), ref) )
+
+        # test rank 2 version
+        g_dlr_iw = Gf(mesh=mesh_dlr_iw, target_shape=[2,2])
+        g_dlr_iw << inverse(iOmega_n - pole)
+
+        ref_mat = np.eye(2) * ref
+        assert( np.allclose(g_dlr_iw.tau_L2_norm(), ref_mat) )
+
 
 if __name__ == '__main__':
     unittest.main()
-
-

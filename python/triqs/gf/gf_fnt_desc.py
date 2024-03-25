@@ -66,6 +66,13 @@ m.add_function("dcomplex density(gf_view<dlr_imfreq, scalar_valued> g)", doc = "
 m.add_function("matrix<dcomplex> density(gf_view<dlr_imtime, matrix_valued> g)", doc = "Density, as a matrix, computed from evaluation in imaginary time")
 m.add_function("dcomplex density(gf_view<dlr_imtime, scalar_valued> g)", doc = "Density, as a complex, computed from evaluation in imaginary time")
 
+# L2 tau norm of DLR Green's function
+for mesh in ['dlr', 'dlr_imfreq', 'dlr_imtime']:
+    for gf_type in ["gf_view", "block_gf_view"]:
+        for target in ["scalar_valued", "matrix_valued"]:
+            m.add_function(f"auto tau_L2_norm({gf_type}<{mesh}, {target}> g)",
+              doc = "Calculate the L2 norm of the DLR Green's function in imaginary time: 1/beta * int_0^beta dt conj(g(t)) g(t). Calculates the norm individually for each set of target indices and each block.")
+
 # ---------------------- miscellaneous --------------------
 for Target in  ["scalar_valued", "tensor_valued<1>", "matrix_valued", "tensor_valued<3>", "tensor_valued<4>"]:
 

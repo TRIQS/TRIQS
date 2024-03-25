@@ -11,6 +11,7 @@ SET(PYTHON_SOURCES
   tools.py
   mesh_point.py
   matsubara_freq.py
+  dlr_crm_dyson_solver.py
 )
 
 add_cpp2py_module(meshes)

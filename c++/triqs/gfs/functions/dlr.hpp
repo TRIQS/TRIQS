@@ -17,6 +17,7 @@
 // Authors: Michel Ferrero, Olivier Parcollet, Hugo U. R. Strand, Nils Wentzell
 
 #pragma once
+#include "nda/declarations.hpp"
 #include "triqs/gfs/gf/gf.hpp"
 #include "triqs/gfs/block/block_gf.hpp"
 #include "../../mesh/imtime.hpp"
@@ -175,6 +176,32 @@ namespace triqs::gfs {
       auto result = gf{mesh::imfreq{g.mesh().beta(), g.mesh().statistic(), n_iw}, g.target_shape()};
       for (auto w : result.mesh()) result[w] = g(w.value());
       return result;
+    }
+  }
+
+  /// L2 tau norm of DLR Green's function
+  template <typename G>
+    requires(MemoryGf<G> or is_block_gf_v<G>)
+  auto tau_L2_norm(G const &g) {
+    using M = typename G::mesh_t;
+    static_assert(is_any_of<M, dlr, dlr_imfreq, dlr_imtime>, "Input mesh must be one of dlr, dlr_imfreq, dlr_imtime");
+    if constexpr (is_block_gf_v<G>) {
+      return map_block_gf([&](auto const &gbl) { return tau_L2_norm(gbl); }, g);
+    } else if constexpr (is_any_of<M, dlr_imtime, dlr_imfreq>) {
+      return tau_L2_norm(make_gf_dlr(g));
+    } else { // M == dlr
+      if constexpr (G::target_rank == 0) {
+        // use abs here to avoid sqrt of negative numbers, which can happen due to numerical errors
+        return std::sqrt(std::abs(g.mesh().dlr_it().innerprod(g.data(), g.data())));
+      } else {
+        auto result = nda::array<double, G::target_rank>(g.target_shape());
+        nda::for_each(g.target_shape(), [&](auto... is) {
+          auto dat      = g.data()(nda::range::all, is...);
+          result(is...) = std::sqrt(std::abs(g.mesh().dlr_it().innerprod(dat, dat)));
+        });
+
+        return result;
+      }
     }
   }
 

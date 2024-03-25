@@ -67,3 +67,6 @@ add_python_test(cyclic_lattice)
 
 # discretize bath
 add_python_test(discretize_bath)
+
+# constrained residual minimization Dyson solver
+add_python_test(crm_dyson_solver)
