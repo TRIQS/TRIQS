@@ -206,7 +206,7 @@ Use cmake to configure the TRIQS build process::
 
 Note, that we have to provide cmake with the flag `CMAKE_INSTALL_PREFIX` to define the installation directory for TRIQS and all its applications. If you are using a :ref:`Python virtual environment<python_virtualenv>`, make sure that it is activated. Finally, build, test and install TRIQS::
 
-    make -j$NCORES && ctest -j$NCORES test && make -j$NCORES install
+    make -j$NCORES && ctest -j$NCORES test && make install
 
 To install TRIQS together with several of its :ref:`applications<applications>` we provide a bash script that
 automatizes the build and test process :download:`build_triqs.sh <installation/build_triqs.sh>`. The script
