@@ -198,7 +198,7 @@ First export `INSTALL_PREFIX` for the installation location, and `NCORES` for th
 Then clone the TRIQS repository and create a build directory::
 
     git clone https://github.com/TRIQS/triqs
-    cd triqs && mkdir -p build
+    cd triqs && mkdir -p build && cd build
 
 Use cmake to configure the TRIQS build process::
 
