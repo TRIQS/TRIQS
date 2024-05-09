@@ -190,7 +190,7 @@ Installation steps
 ------------------
 
 We provide hereafter the build instructions for the TRIQS library.
-First export `INSTALL_PREFIX` for the installation location, and `NCORES` for the number of cores to use during compilation::
+First export `INSTALL_PREFIX` for the installation location, and `NCORES` for the number of cores to use during compilation, for example::
 
     export INSTALL_PREFIX=$(pwd)/install
     export NCORES=4
