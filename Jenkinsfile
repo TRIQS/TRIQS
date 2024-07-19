@@ -20,7 +20,7 @@ properties([
 def platforms = [:]
 
 /****************** linux builds (in docker) */
-/* Each platform must have a cooresponding Dockerfile.PLATFORM in triqs/packaging */
+/* Each platform must have a corresponding Dockerfile.PLATFORM in triqs/packaging */
 def dockerPlatforms = ["ubuntu-clang", "ubuntu-gcc", "sanitize"]
 /* .each is currently broken in jenkins */
 for (int i = 0; i < dockerPlatforms.size(); i++) {
@@ -35,9 +35,9 @@ for (int i = 0; i < dockerPlatforms.size(); i++) {
       /* build and tag */
       def args = ''
       if (platform == documentationPlatform)
-        args = '-DBuild_Documentation=1 -DMATHJAX_PATH=https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2'
+        args = '-DBuild_Documentation=1'
       else if (platform == "sanitize")
-        args = '-DASAN=ON -DUBSAN=ON'
+        args = '-DASAN=ON -DUBSAN=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo'
       def uid = sh(returnStdout: true, script: "id -u").trim()
       def img = docker.build("flatironinstitute/${dockerName}:${env.BRANCH_NAME}-${env.STAGE_NAME}", "--build-arg APPNAME=${projectName} --build-arg BUILD_ID=${env.BUILD_TAG} --build-arg CMAKE_ARGS='${args}' --build-arg BUILDUID=${uid} .")
       catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
@@ -54,8 +54,8 @@ for (int i = 0; i < dockerPlatforms.size(); i++) {
 
 /****************** osx builds (on host) */
 def osxPlatforms = [
-  ["gcc", ['CC=gcc-13', 'CXX=g++-13', 'FC=gfortran-13']],
-  ["clang", ['CC=$BREW/opt/llvm/bin/clang', 'CXX=$BREW/opt/llvm/bin/clang++', 'FC=gfortran-13', 'CXXFLAGS=-I$BREW/opt/llvm/include', 'LDFLAGS=-L$BREW/opt/llvm/lib']]
+  ["gcc", ['CC=gcc-14', 'CXX=g++-14', 'FC=gfortran-14']],
+  ["clang", ['CC=$BREW/opt/llvm/bin/clang', 'CXX=$BREW/opt/llvm/bin/clang++', 'FC=gfortran-14', 'CXXFLAGS=-I$BREW/opt/llvm/include', 'LDFLAGS=-L$BREW/opt/llvm/lib']]
 ]
 for (int i = 0; i < osxPlatforms.size(); i++) {
   def platformEnv = osxPlatforms[i]
@@ -78,15 +78,16 @@ for (int i = 0; i < osxPlatforms.size(); i++) {
           "C_INCLUDE_PATH=$hdf5/include:${env.BREW}/include",
           "CPLUS_INCLUDE_PATH=$venv/include:$hdf5/include:${env.BREW}/include",
           "LIBRARY_PATH=$venv/lib:$hdf5/lib:${env.BREW}/lib",
-          "LD_LIBRARY_PATH=$hdf5/lib",
+          "DYLD_LIBRARY_PATH=$venv/lib:$hdf5/lib:${env.BREW}/lib",
           "LAPACK_ROOT=${env.BREW}/opt/openblas",
-          "PYTHONPATH=$installDir/lib/python3.9/site-packages",
+          "PYTHONPATH=$installDir/lib/python3.12/site-packages",
           "CMAKE_PREFIX_PATH=$venv/lib/cmake/triqs",
+          "VIRTUAL_ENV=$venv",
           "OMP_NUM_THREADS=2"]) {
         deleteDir()
-        sh "python3 -m venv $venv"
-        sh "DYLD_LIBRARY_PATH=\$BREW/lib pip3 install -U -r $srcDir/requirements.txt"
-        sh "cmake $srcDir -DCMAKE_INSTALL_PREFIX=$installDir -DBuild_Deps=Always"
+        sh "${env.BREW}/bin/python3 -m venv $venv"
+        sh "pip3 install -U -r $srcDir/requirements.txt"
+        sh "cmake $srcDir -DCMAKE_INSTALL_PREFIX=$installDir"
         sh "make -j2 || make -j1 VERBOSE=1"
         catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') { try {
           sh "make test CTEST_OUTPUT_ON_FAILURE=1"
@@ -168,7 +169,7 @@ Changes:
 End of build log:
 \${BUILD_LOG,maxLines=60}
     """,
-    to: 'oparcollet@flatironinstitute.org, nwentzell@flatironinstitute.org, dsimon@flatironinstitute.org',
+    to: 'nwentzell@flatironinstitute.org',
     recipientProviders: [
       [$class: 'DevelopersRecipientProvider'],
     ],
