@@ -211,6 +211,12 @@ namespace triqs::mesh {
                                  m._w_max, m._eps);
     }
 
+    // -------------------- serialization -------------------
+
+    template <class Archive> void serialize(Archive &ar, unsigned int = 0) { //
+      ar & _beta & _statistic & _w_max & _eps & _mesh_hash & _dlr;
+    }
+
     // -------------------- HDF5 -------------------
 
     [[nodiscard]] static std::string hdf5_format() { return "MeshDLRImTime"; }

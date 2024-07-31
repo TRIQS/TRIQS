@@ -157,7 +157,7 @@ struct A {
   friend class triqs::py_tools::reductor;
   friend class triqs::py_tools::reconstructor;
   /// boost serialisation
-  template <typename Archive> void serialize(Archive &ar, const unsigned int version) { ar &i &x; }
+  template <typename Archive> void serialize(Archive &ar, unsigned int = 0) { ar &i &x; }
 };
 
 /// some function using A
