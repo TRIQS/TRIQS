@@ -305,12 +305,12 @@ namespace triqs::mc_tools {
           }
           if (do_measure) report(3) << AllMeasures.report();
           next_info_time = 1.25 * timer_run + 2.0; // Increase time interval non-linearly
+
+          // Stop if an emergeny occured on any node
+          if (node_monitor) stop_it = node_monitor->emergency_occured();
         }
         finished = NC + 1 >= n_cycles and not infinite;
-        stop_it  = (stop_callback() || triqs::signal_handler::received() || finished);
-
-        // Stop if an emergeny occured on any node
-        if (node_monitor) stop_it |= node_monitor->emergency_occured();
+        stop_it |= (stop_callback() || triqs::signal_handler::received() || finished);
 
       } // end main NC loop
 
