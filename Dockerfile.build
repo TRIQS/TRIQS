@@ -2,9 +2,6 @@
 FROM flatironinstitute/triqs:base
 ARG APPNAME=triqs
 
-COPY requirements.txt /src/$APPNAME/requirements.txt
-RUN pip3 install -r /src/$APPNAME/requirements.txt
-
 ARG BUILDUID=983
 RUN useradd -u $BUILDUID -m build
 
@@ -13,7 +10,8 @@ ENV SRC=/src \
     INSTALL=/usr/local \
     PYTHONPATH=/usr/local/lib/python$PYTHON_VERSION/site-packages \
     CMAKE_PREFIX_PATH=/usr/lib/cmake/$APPNAME \
-    OMP_NUM_THREADS=4
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1
 
 # Hacky patch for matplotlib sphinx bug (https://github.com/matplotlib/matplotlib/pull/12456?)
 RUN ln -s /src /home/src
@@ -25,6 +23,6 @@ USER build
 ARG BUILD_ID
 ARG CMAKE_ARGS
 ARG NCORES=4
-RUN cmake $SRC/$APPNAME -DCMAKE_INSTALL_PREFIX=$INSTALL -DBuild_Deps=Always -DCLANG_OPT="$CXXFLAGS" $CMAKE_ARGS && make -j$NCORES || make -j1 VERBOSE=1
+RUN cmake $SRC/$APPNAME -DCMAKE_INSTALL_PREFIX=$INSTALL -DCLANG_OPT="$CXXFLAGS" $CMAKE_ARGS && make -j$NCORES || make -j1 VERBOSE=1
 USER root
 RUN make install
