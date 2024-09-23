@@ -43,6 +43,10 @@ namespace triqs::stat {
       std::vector<T> bins;     // Bins with accumulated data (stores means)
       long count = 0;          // Total number of elements added to accumulator: Information only
 
+      // Callback function after compressing bins
+      using callback_t    = std::function<void(std::vector<T> const &)>;
+      callback_t callback = {};
+
       // static std::string hdf5_format() { return "linear_bins"; }
 
       lin_binning() = default;
@@ -55,6 +59,12 @@ namespace triqs::stat {
         bins.emplace_back(std::move(data_instance_local));
       }
 
+      // Optional constructor setting the callback function
+      lin_binning(T const &data_instance, long max_n_bins, long bin_capacity, callback_t const &callback)
+         : lin_binning(data_instance, max_n_bins, bin_capacity) {
+        this->callback = callback;
+      }
+
       [[nodiscard]] long n_bins() const { return bins.size(); }
 
       template <typename U> lin_binning<T> &operator<<(U &&x) {
@@ -62,7 +72,8 @@ namespace triqs::stat {
         if (max_n_bins == 0) return *this;
         // Check if all bins are full and compress if needed
         if (max_n_bins > 1 && n_bins() == max_n_bins && last_bin_count == bin_capacity) {
-          compress(2); // Adjusts bin_capacity & last_bin_count
+          compress(2);                  // Adjusts bin_capacity & last_bin_count
+          if (callback) callback(bins); // Callback if defined
         }
         // Check if current bin full: push new bin or add data to current bin
         if (last_bin_count == bin_capacity && max_n_bins != 1) {
@@ -292,6 +303,7 @@ namespace triqs::stat {
     long count = 0;
     details::log_binning<T> log_bins;
     details::lin_binning<T> lin_bins;
+    std::vector<get_real_t<T>> auto_corr_times;
 
     // HDF5
     friend void h5_write(h5::group g, std::string const &name, accumulator<T> const &l) {
@@ -344,9 +356,34 @@ namespace triqs::stat {
     ///
     /// @param lin_bin_capacity The number of measurements the linear part will average together in a single bin, before starting a new bin.
     ///
-    accumulator(T const &data_instance, int n_log_bins_max = 0, int n_lin_bins_max = 0, int lin_bin_capacity = 1)
+    accumulator(T const &data_instance, int n_log_bins_max = 0, int n_lin_bins_max = 0, int lin_bin_capacity = 1,
+                std::function<void(std::vector<T> const & /* lin_bins */)> callback = {})
        : log_bins{data_instance, n_log_bins_max}, //
-         lin_bins{data_instance, n_lin_bins_max, lin_bin_capacity} {}
+         lin_bins{data_instance, n_lin_bins_max, lin_bin_capacity, callback} {
+
+      if (!callback) { // set to default if callback has not been defined
+        callback = [&](std::vector<T> const &bins) {
+          // variance of the whole time series
+          auto var_no_binning = log_bins.Qk / log_bins.count - log_bins.Mk * log_bins.Mk;
+
+          // mean of the binned data
+          T mean_with_binning = bins[0];
+          for (auto i : range(1, bins.size())) mean_with_binning += bins[i];
+          mean_with_binning /= bins.size();
+
+          // variance of the binned data
+          get_real_t<T> var_with_binning = (bins[0] - mean) * (bins[0] - mean);
+          for (auto i : range(1, bins.size())) var_with_binning += (bins[i] - mean) * (bins[i] - mean);
+          var_with_binning /= bins.size();
+
+          // estimate the autocorrelation time
+          auto_corr_times.emplace_back(0.5 * (lin_bins.bin_capacity * var_with_binning / var_no_binning - var_no_binning / var_no_binning));
+        };
+
+        // pass default to lin_bins
+        lin_bins.callback = callback;
+      }
+    }
 
     /// Returns the maximum number of bins the logarithmic part of the accumulator can hold.
     /// @brief Max. number of bins in the logarithmic accumulator
