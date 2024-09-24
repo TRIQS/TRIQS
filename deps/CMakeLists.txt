@@ -112,7 +112,7 @@ external_dependency(h5
 external_dependency(nda
   GIT_REPO https://github.com/TRIQS/nda
   VERSION 1.3
-  GIT_TAG 1.3.x
+  GIT_TAG hadamard # 1.3.x
 ) 
 
 # -- cppdlr --
