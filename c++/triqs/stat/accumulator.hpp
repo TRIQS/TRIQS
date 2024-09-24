@@ -174,7 +174,7 @@ namespace triqs::stat {
           acc_count.push_back(0);
         }
         // Multiply to ensure element can be element-wise multiplied [FIXME with concepts]
-        Qk.emplace_back(make_real(nda::hadamard(data_instance_local, data_instance_local)));
+        Qk.emplace_back(make_real(nda::hadamard(nda::conj(data_instance_local), data_instance_local)));
         Mk.emplace_back(std::move(data_instance_local));
       }
 
@@ -303,7 +303,7 @@ namespace triqs::stat {
     long count = 0;
     details::log_binning<T> log_bins;
     details::lin_binning<T> lin_bins;
-    std::vector<get_real_t<T>> auto_corr_times;
+    std::vector<get_real_t<T>> auto_corr_times; // will be filled by the default callback if n_log_bins > 0
 
     // HDF5
     friend void h5_write(h5::group g, std::string const &name, accumulator<T> const &l) {
@@ -324,7 +324,7 @@ namespace triqs::stat {
     [[nodiscard]] static std::string hdf5_format() { return "accumulator"; }
 
     accumulator() = default;
-    auto auto_correlation_times() const { return auto_corr_times; }
+    auto const &auto_correlation_times() const { return auto_corr_times; }
 
     ///
     /// @tparam T
