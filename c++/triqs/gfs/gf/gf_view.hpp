@@ -18,11 +18,13 @@
 #pragma once
 #include "./gf.hpp"
 
+#include <string>
+
 namespace triqs::gfs {
 
   // ----------------------  gf_view -----------------------------------------
   /**
-   * The Green function container. 
+   * The Green function container.
    *
    * @tparam M       The domain of definition
    * @tparam Target  The target domain
@@ -145,6 +147,9 @@ namespace triqs::gfs {
     mesh_t _mesh;
     data_t _data;
 
+    public:
+    std::string name;
+
     // -------------------------------- impl. details common to all classes -----------------------------------------------
 
     public:
@@ -181,8 +186,8 @@ namespace triqs::gfs {
 
     /**
        * Builds a view on top of a mesh, a data array
-       * 
-       * @tparam ArrayType Type of the data array 
+       *
+       * @tparam ArrayType Type of the data array
        * @param dat Data array
        */
     gf_view(mesh_t m, data_t dat) : _mesh(std::move(m)), _data(dat) {}
