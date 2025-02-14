@@ -17,21 +17,22 @@
 //
 // Authors: Michel Ferrero, Olivier Parcollet, Nils Wentzell
 
-#include "MersenneRNG.hpp"
+#include "./MersenneRNG.hpp"
 
-namespace triqs {
-  namespace mc_tools {
-    namespace RandomGenerators {
-
-      double RandMT::eval() {
 #ifdef DEBUG
-        double r = (double)(randomMT()) / 0xFFFFFFFFU;
-        std::cout << "RANDOM " << r << std::endl;
-        return r;
+#include <iostream>
+#endif // DEBUG
+
+namespace triqs::mc_tools::RandomGenerators {
+
+  double RandMT::eval() {
+#ifdef DEBUG
+    double r = (double)(randomMT()) / 0xFFFFFFFFU;
+    std::cout << "RANDOM " << r << std::endl;
+    return r;
 #else
-        return ((double)(randomMT()) / 0xFFFFFFFFU);
+    return ((double)(randomMT()) / 0xFFFFFFFFU);
 #endif
-      }
-    } // namespace RandomGenerators
-  }   // namespace mc_tools
-} // namespace triqs
+  }
+
+} // namespace triqs::mc_tools::RandomGenerators

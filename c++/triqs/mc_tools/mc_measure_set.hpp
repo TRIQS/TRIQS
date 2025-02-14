@@ -1,7 +1,6 @@
 // Copyright (c) 2013-2018 Commissariat à l'énergie atomique et aux énergies alternatives (CEA)
 // Copyright (c) 2013-2018 Centre national de la recherche scientifique (CNRS)
-// Copyright (c) 2018-2023 Simons Foundation
-// Copyright (c) 2017 Hugo U.R. Strand
+// Copyright (c) 2018-2022 Simons Foundation
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -16,194 +15,175 @@
 // You may obtain a copy of the License at
 //     https://www.gnu.org/licenses/gpl-3.0.txt
 //
-// Authors: Michel Ferrero, Henri Menke, Olivier Parcollet, Hugo U.R. Strand, Nils Wentzell
+// Authors: Michel Ferrero, Olivier Parcollet, Nils Wentzell
 
 #pragma once
+
+#include "./concepts.hpp"
+#include "./mc_measure.hpp"
+
+#include <fmt/format.h>
 #include <h5/h5.hpp>
-#include <mpi/mpi.hpp>
-#include <triqs/utility/exceptions.hpp>
-#include <triqs/utility/timer.hpp>
-#include <functional>
-#include <map>
+#include <mpi/communicator.hpp>
+
 #include <cassert>
-#include <iomanip>
+#include <complex>
+#include <map>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
 
-namespace triqs {
-  namespace mc_tools {
+namespace triqs::mc_tools {
 
-    // similar technique as move, cf move_set.
-    template <typename MCSignType> class measure {
+  /**
+   * @brief MC measure set class.
+   *
+   * @details It combines multiple MC measures.
+   *
+   * Since it models the triqs::mc_tools::MCMeasure concept, it can be used just like any other MC measure:
+   *
+   * - measure_set::accumulate: Calls the measure::accumulate method for all registered MC measures.
+   * - measure_set::collect_results: Calls the measure::collect_results method for all registered MC measures.
+   * - measure_set::report: Concatenates the reports from all measurements by calling their measure::report method.
+   *
+   * @tparam MCSignType triqs::mc_tools::DoubleOrComplex type of the sign/weight of a MC configuration.
+   */
+  template <DoubleOrComplex MCSignType> class measure_set {
+    public:
+    /// Map type used for storing the measures.
+    using measure_map_t = std::map<std::string, measure<MCSignType>>;
 
-      std::shared_ptr<void> impl_;
-      std::function<void(MCSignType const &)> accumulate_;
-      std::function<void(mpi::communicator const &)> collect_results_;
-      std::function<std::string()> report_;
-      std::function<void(h5::group, std::string const &)> h5_r, h5_w;
+    /// Iterator type for the measure set.
+    using measure_itr_t = measure_map_t::iterator;
 
-      uint64_t count_;
-      bool enable_timer;
-      utility::timer Timer;
+    /// Default constructor.
+    measure_set() = default;
 
-      public:
-      bool report_measure;
+    /// Deleted copy constructor.
+    measure_set(measure_set const &) = delete;
 
-      template <typename MeasureType>
-      measure(bool, MeasureType &&m, bool enable_timer, bool report_measure) : enable_timer(enable_timer), report_measure(report_measure) {
-        static_assert(std::is_move_constructible<MeasureType>::value, "This measure is not MoveConstructible");
-        static_assert(
-           requires { m.accumulate(std::declval<MCSignType>()); }, " This measure has no accumulate method !");
-        static_assert(
-           requires { m.collect_results(std::declval<mpi::communicator>()); }, " This measure has no collect_results method !");
-        using m_t        = std::decay_t<MeasureType>;
-        m_t *p           = new m_t(std::forward<MeasureType>(m));
-        impl_            = std::shared_ptr<m_t>(p);
-        accumulate_      = [p](MCSignType const &x) { p->accumulate(x); };
-        count_           = 0;
-        collect_results_ = [p](mpi::communicator const &c) { p->collect_results(c); };
-        report_          = [p]() -> std::string {
-          if constexpr (requires { p->report(); }) {
-            return p->report();
-          } else {
-            (void)p; // suppress clang -Wunused-lambda-capture warning
-            TRIQS_RUNTIME_ERROR << "This measure does not implement the report function";
-          }
-        };
-        h5_r = [p](h5::group g, std::string const &name) {
-          if constexpr (requires { h5_read(g, name, *p); }) h5_read(g, name, *p);
-          else (void)p; // suppress clang -Wunused-lambda-capture warning
-        };
-        h5_w = [p](h5::group g, std::string const &name) {
-          if constexpr (requires { h5_write(g, name, *p); }) h5_write(g, name, *p);
-          else (void)p; // suppress clang -Wunused-lambda-capture warning
-        };
-      }
+    /// Deleted copy assignment operator.
+    measure_set &operator=(measure_set const &) = delete;
 
-      //
-      measure(measure const &rhs)            = delete;
-      measure(measure &&rhs)                 = default;
-      measure &operator=(measure const &rhs) = delete;
-      measure &operator=(measure &&rhs)      = default;
+    /// Default move constructor.
+    measure_set(measure_set &&) = default;
 
-      void accumulate(MCSignType signe) {
-        assert(impl_);
-        count_++;
-        if (enable_timer) Timer.start();
-        accumulate_(signe);
-        if (enable_timer) Timer.stop();
-      }
-      void collect_results(mpi::communicator const &c) {
-        if (enable_timer) Timer.start();
-        collect_results_(c);
-        if (enable_timer) Timer.stop();
-      }
-      std::string report() const { return report_(); }
+    /// Default move assignment operator.
+    measure_set &operator=(measure_set &&) = default;
 
-      uint64_t count() const { return count_; }
-      double duration() const { return double(Timer); }
+    /**
+     * @brief Add a new measure to the set with a given name.
+     *
+     * @details Throws a `std::runtime_error` if a measurement with the same name has already been registered.
+     *
+     * @tparam T triqs::mc_tools::MCMeasure type.
+     * @param m MC measure to add to the set.
+     * @param name Name of the measure.
+     * @param enable_timer Enable the timer in the measure::accumulate and measure::collect_results methods.
+     * @param enable_report Enable the measure::report method.
+     */
+    template <typename T>
+      requires MCMeasure<T, MCSignType>
+    measure_itr_t insert(T &&m, std::string name, bool enable_timer, bool enable_report) {
+      if (has(name)) throw std::runtime_error(fmt::format("Error in measure_set: Measure with name {} already exists", name));
+      return measures_.emplace(name, measure<MCSignType>{std::forward<T>(m), enable_timer, enable_report}).first;
+    }
 
-      friend void h5_write(h5::group g, std::string const &name, measure const &m) {
-        if (m.h5_w) m.h5_w(g, name);
-      };
-      friend void h5_read(h5::group g, std::string const &name, measure &m) {
-        if (m.h5_r) m.h5_r(g, name);
-      };
-    };
+    /**
+     * @brief Remove the measure at the given iterator from the set.
+     * @param it Iterator to the measure to be removed.
+     */
+    void remove(measure_itr_t const &it) { measures_.erase(it); }
 
-    //--------------------------------------------------------------------
+    /// Remove all measures from the set.
+    void clear() { measures_.clear(); }
 
-    template <typename MCSignType> class measure_set {
+    /**
+     * @brief Check if a measure with the given name is registered.
+     * @param name Name of the measure.
+     * @return True if the measure is registered, false otherwise.
+     */
+    [[nodiscard]] bool has(std::string const &name) const { return measures_.find(name) != measures_.end(); }
 
-      using measure_type = measure<MCSignType>;
-      using m_map_t      = std::map<std::string, measure<MCSignType>>;
-      m_map_t m_map;
+    /**
+     * @brief Get a vector of all the measure names.
+     * @return `std::vector<std::string>` containing the names of all registered measures.
+     */
+    [[nodiscard]] std::vector<std::string> names() const;
 
-      public:
-      using measure_itr_t = typename m_map_t::iterator;
+    /**
+     * @brief Perform all measurements in the set.
+     * @details It calls the measure::accumulate method for each measure.
+     * @param sign Sign of the current MC configuration.
+     */
+    void accumulate(MCSignType sign) {
+      for (auto &[name, m] : measures_) m.accumulate(sign);
+    }
 
-      measure_set()                                  = default;
-      measure_set(measure_set const &rhs)            = delete;
-      measure_set(measure_set &&rhs)                 = default;
-      measure_set &operator=(measure_set const &rhs) = delete;
-      measure_set &operator=(measure_set &&rhs)      = default;
+    /**
+     * @brief Collect results from all the measures in the measure set from multiple MPI processes.
+     * @details It calls the measure::collect_results method for each measure.
+     * @param c MPI communicator.
+     */
+    void collect_results(const mpi::communicator &c);
 
-      /**
-    * Register the Measure M with a name
-    */
-      template <typename MeasureType> measure_itr_t insert(MeasureType &&M, std::string const &name, bool enable_timer, bool report_measure) {
-        if (has(name)) TRIQS_RUNTIME_ERROR << "measure_set : insert : measure '" << name << "' already inserted";
-        // workaround for all gcc
-        // m_map.insert(std::make_pair(name, measure_type(true, std::forward<MeasureType>(M))));
-        auto [itr, was_inserted] = m_map.emplace(name, measure_type(true, std::forward<MeasureType>(M), enable_timer, report_measure));
-        return itr;
-      }
+    /**
+     * @brief Report information about the measures in the set.
+     * @details It calls the measure::report method for each measure and concatenates the results.
+     * @return Concatenated reports from all measurements.
+     */
+    [[nodiscard]] std::string report() const;
 
-      /**
-       * Remove the measure m.
-       */
-      void remove(measure_itr_t const &m) { m_map.erase(m); }
+    /**
+     * @brief Get a formatted string with the timings of all measures.
+     *
+     * @details It calls the measure::get_timings method for each measure and concatenates the results.
+     *
+     * @param prefix Prefix string to be added to the beginning of each line (not intended for the user).
+     * @return String containing the timings of all measures.
+     */
+    [[nodiscard]] std::string get_timings(std::string const &prefix = "") const;
 
-      /**
-       * Removes all measures
-       */
-      void clear() { m_map.clear(); }
+    /// Get the HDF5 format tag.
+    [[nodiscard]] static std::string hdf5_format() { return "measure_set"; }
 
-      /// Does qmc have a measure named name
-      bool has(std::string const &name) const { return m_map.find(name) != m_map.end(); }
+    /**
+     * @brief Write the measure set object to HDF5.
+     *
+     * @details It loops over all registered measures and calls the `h5_write` function for each measure.
+     *
+     * @param g h5::group to be written to.
+     * @param key Name of the subgroup.
+     * @param ms Measure set object to be written.
+     */
+    friend void h5_write(h5::group g, std::string const &key, measure_set const &ms) {
+      auto gr = g.create_group(key);
+      h5::write_hdf5_format(gr, ms);
+      for (auto const &[name, m] : ms.measures_) h5::write(gr, name, m);
+    }
 
-      ///
-      void accumulate(MCSignType const &sign) {
-        for (auto &[name, m] : m_map) m.accumulate(sign);
-      }
+    /**
+     * @brief Read the measure set object from HDF5.
+     *
+     * @details It loops over all registered measures and calls the `h5_read` function for each measure.
+     *
+     * @param g h5::group to be read from.
+     * @param ky Name of the subgroup.
+     * @param ms Measure set object to be read into.
+     */
+    friend void h5_read(h5::group g, std::string const &key, measure_set &ms) {
+      auto gr = g.open_group(key);
+      h5::assert_hdf5_format(gr, ms);
+      for (auto &[name, m] : ms.measures_) h5::read(gr, name, m);
+    }
 
-      std::vector<std::string> names() const {
-        std::vector<std::string> res;
-        for (auto &[name, m] : m_map) res.push_back(name);
-        return res;
-      }
+    private:
+    measure_map_t measures_;
+  };
 
-      std::string report() const {
-        std::string result{};
-        for (auto &[name, m] : m_map) {
-          if (m.report_measure) result += m.report() + "\n";
-        }
-        return result;
-      }
+  // Explicit template instantiation declarations.
+  extern template class measure_set<double>;
+  extern template class measure_set<std::complex<double>>;
 
-      /// Pretty print the timings of all measures
-      std::string get_timings() const {
-        std::ostringstream s;
-        double total_time = 0;
-        int wsec          = 10;
-        size_t wlab       = 18; // measure label width, find max length
-        for (auto &[name, m] : m_map) wlab = wlab > name.size() ? wlab : name.size();
-        s << std::left << std::setw(wlab) << "Measure"
-          << " | " << std::setw(wsec) << "seconds" << std::endl;
-        ;
-        for (auto &[name, m] : m_map) {
-          s << std::left << std::setw(wlab) << name << " | " << std::setw(wsec) << m.duration() << "\n";
-          total_time += m.duration();
-        }
-        s << std::left << std::setw(wlab) << "Total measure time"
-          << " | " << std::setw(wsec) << total_time << "\n";
-        return s.str();
-      }
-
-      // gather result for all measure, on communicator c
-      void collect_results(mpi::communicator const &c) {
-        for (auto &[name, m] : m_map) m.collect_results(c);
-      }
-
-      // HDF5 interface
-      friend void h5_write(h5::group g, std::string const &key, measure_set const &ms) {
-        auto gr = g.create_group(key);
-        for (auto &[name, m] : ms.m_map) h5_write(gr, name, m);
-      }
-
-      friend void h5_read(h5::group g, std::string const &key, measure_set &ms) {
-        auto gr = g.open_group(key);
-        for (auto &[name, m] : ms.m_map) h5_read(gr, name, m);
-      }
-    };
-
-  } // namespace mc_tools
-} // namespace triqs
+} // namespace triqs::mc_tools

@@ -17,61 +17,67 @@
 //
 // Authors: Michel Ferrero, Olivier Parcollet, Nils Wentzell
 
-#include "random_generator.hpp"
 #include "./MersenneRNG.hpp"
-#include "./../utility/macros.hpp"
-//#include <boost/random/uniform_int.hpp>
-#include <boost/random/uniform_real.hpp>
-#include <boost/random/mersenne_twister.hpp>
-#include <boost/random/lagged_fibonacci.hpp>
-#include <boost/random/ranlux.hpp>
-#include <boost/random/variate_generator.hpp>
-#include <sstream>
-#include <boost/preprocessor/seq.hpp>
-#include <boost/preprocessor/control/if.hpp>
+#include "./random_generator.hpp"
 
-// List of All available Boost random number generator
+#include <boost/preprocessor/control/if.hpp>
+#include <boost/preprocessor/seq.hpp>
+#include <boost/random/lagged_fibonacci.hpp>
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/random/ranlux.hpp>
+#include <boost/random/uniform_real.hpp>
+#include <boost/random/variate_generator.hpp>
+#include <fmt/format.h>
+#include <nda/macros.hpp>
+
+#include <cstdint>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+// List of all supported Boost random number generators.
 #define RNG_LIST                                                                                                                                     \
   (mt19937)(mt11213b)(                                                                                                                               \
      lagged_fibonacci607)(lagged_fibonacci1279)(lagged_fibonacci2281)(lagged_fibonacci3217)(lagged_fibonacci4423)(lagged_fibonacci9689)(lagged_fibonacci19937)(lagged_fibonacci23209)(lagged_fibonacci44497)(ranlux3)
 
-namespace triqs {
-  namespace mc_tools {
+namespace triqs::mc_tools {
 
-    random_generator::random_generator(std::string const &RandomGeneratorName, uint32_t seed_) {
-      _name = RandomGeneratorName;
-
-      if (RandomGeneratorName == "") {
-        gen = utility::buffered_function<double>(mc_tools::RandomGenerators::RandMT(seed_));
-        return;
-      }
-
-      boost::uniform_real<> dis;
-
-// now boost random number generators
-#define DRNG(r, data, XX)                                                                                                                            \
-  if (RandomGeneratorName == AS_STRING(XX)) {                                                                                                        \
-    gen = utility::buffered_function<double>(boost::variate_generator<boost::XX, boost::uniform_real<>>(boost::XX(seed_), dis));                     \
-    return;                                                                                                                                          \
+  random_generator::random_generator(std::string name, std::uint32_t seed, std::size_t buffer_size) : buffer_(buffer_size), name_(std::move(name)) {
+    initialize_rng(name_, seed);
+    refill();
   }
 
-      BOOST_PP_SEQ_FOR_EACH(DRNG, ~, RNG_LIST)
-
-      TRIQS_RUNTIME_ERROR << "The random generator " << RandomGeneratorName << " is not recognized";
+  void random_generator::initialize_rng(std::string const &name, std::uint32_t seed) {
+    // empty string corresponds to RandMT
+    if (name.empty()) {
+      using rng_t = RandomGenerators::RandMT;
+      ptr_        = std::make_unique<rng_model<rng_t>>(seed);
+      return;
     }
 
-    //---------------------------------------------
+    // now boost random number generators
+#define DRNG(r, data, XX)                                                                                                                            \
+  if (name == AS_STRING(XX)) {                                                                                                                       \
+    using rng_t = boost::variate_generator<boost::XX, boost::uniform_real<double>>;                                                                  \
+    ptr_        = std::make_unique<rng_model<rng_t>>(rng_t{boost::XX{seed}, boost::uniform_real<>{}});                                               \
+    return;                                                                                                                                          \
+  }
+    BOOST_PP_SEQ_FOR_EACH(DRNG, ~, RNG_LIST)
 
-    std::string random_generator_names(std::string const &sep) {
-#define PR(r, sep, p, XX) BOOST_PP_IF(p, +sep +, ) std::string(AS_STRING(XX))
-      return BOOST_PP_SEQ_FOR_EACH_I(PR, sep, RNG_LIST);
-    }
+    // throw an exception if the given name is not recognized
+    throw std::runtime_error(fmt::format("Error in random_generator::initialize_rng: RNG with name {} is not supported", name));
+  }
 
-    std::vector<std::string> random_generator_names_list() {
-      std::vector<std::string> res;
+  std::string random_generator_names(std::string const &sep) {
+#define PR(r, sep, p, XX) BOOST_PP_IF(p, +(sep) +, ) std::string(AS_STRING(XX))
+    return BOOST_PP_SEQ_FOR_EACH_I(PR, sep, RNG_LIST);
+  }
+
+  std::vector<std::string> random_generator_names_list() {
+    std::vector<std::string> res;
 #define PR2(r, sep, p, XX) res.push_back(AS_STRING(XX));
-      BOOST_PP_SEQ_FOR_EACH_I(PR2, sep, RNG_LIST);
-      return res;
-    }
-  } // namespace mc_tools
-} // namespace triqs
+    BOOST_PP_SEQ_FOR_EACH_I(PR2, sep, RNG_LIST);
+    return res;
+  }
+
+} // namespace triqs::mc_tools
